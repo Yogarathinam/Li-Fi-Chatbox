@@ -1,0 +1,41 @@
+#include <M5Stack.h>
+
+const int ledPin = 2; // LED pin for transmitting data
+
+void setup() {
+    M5.begin();
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, LOW);
+}
+
+void sendBit(bool bit) {
+    digitalWrite(ledPin, bit ? HIGH : LOW);
+    delay(100); // Each bit lasts for 100ms
+}
+
+void sendByte(byte b) {
+    for (int i = 7; i >= 0; i--) {
+        sendBit(bitRead(b, i));
+    }
+}
+
+void sendData(String text) {
+    // Send Start Signal "11110000"
+    sendByte(0xF0);
+
+    // Send Data
+    for (int i = 0; i < text.length(); i++) {
+        sendByte(text[i]);
+    }
+
+    // Send Stop Signal "00001111"
+    sendByte(0x0F);
+}
+
+void loop() {
+    M5.update();
+    if (M5.BtnA.wasPressed()) {
+        M5.Lcd.println("Sending: Hi");
+        sendData("Hi");
+    }
+}
