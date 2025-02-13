@@ -1,0 +1,60 @@
+#include <M5Stack.h>
+
+const int ledPin = 2; // LED pin for transmitting data
+
+void setup() {
+    M5.begin();
+    pinMode(ledPin, OUTPUT);
+    digitalWrite(ledPin, LOW);
+    Serial.begin(115200);
+    
+    // Set a larger font for better visibility
+    M5.Lcd.setTextSize(3);  
+    M5.Lcd.setCursor(10, 10);
+    M5.Lcd.println("Enter a message:");
+    
+    Serial.println("Enter a message to send:");
+}
+
+void sendBit(bool bit) {
+    digitalWrite(ledPin, bit ? HIGH : LOW);
+    delay(100); // Each bit lasts for 100ms
+}
+
+void sendByte(byte b) {
+    for (int i = 7; i >= 0; i--) {
+        sendBit(bitRead(b, i));
+    }
+}
+
+void sendData(String text) {
+    sendByte(0xF0); // Send Start Signal "11110000"
+    
+    for (int i = 0; i < text.length(); i++) {
+        sendByte(text[i]); // Send each character (including spaces)
+    }
+
+    sendByte(0x0F); // Send Stop Signal "00001111"
+}
+
+void loop() {
+    if (Serial.available()) {
+        String message = Serial.readStringUntil('\n'); // Read full input
+        message.trim(); // Remove extra spaces and newline characters
+        
+        if (message.length() > 0) {
+            Serial.print("Sending: ");
+            Serial.println(message);
+            
+            // Clear LCD and update text
+            M5.Lcd.fillScreen(BLACK);
+            M5.Lcd.setCursor(10, 10);
+            M5.Lcd.setTextSize(3);  // Increase font size
+            M5.Lcd.println("Sending:");
+            M5.Lcd.println(message);
+            
+            sendData(message);
+            Serial.println("Message Sent!");
+        }
+    }
+}
