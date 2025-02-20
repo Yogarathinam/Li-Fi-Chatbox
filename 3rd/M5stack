@@ -1,0 +1,133 @@
+#include <M5Stack.h>
+
+#define LED_PIN 2       // LED for transmission
+#define SOLAR_PIN 36    // Solar panel for reception
+#define SAMPLE_TIME 100 // Sampling interval in ms
+#define START_SIGNAL 0xF0 // Start byte (11110000)
+#define STOP_SIGNAL 0x0F  // Stop byte (00001111)
+
+int roomLight = 0;
+int threshold = 0;
+bool listening = false;
+String receivedData = "";
+
+void setup() {
+    M5.begin();
+    Serial.begin(115200);
+
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
+    pinMode(SOLAR_PIN, INPUT);
+
+    // Calibration for ambient light
+    Serial.println("M5Stack LiFi TX/RX Ready...");
+    Serial.println("Calibrating Room Light...");
+
+    long total = 0;
+    int samples = 20;
+    for (int i = 0; i < samples; i++) {
+        total += analogRead(SOLAR_PIN);
+        delay(100);
+    }
+    roomLight = total / samples;
+    threshold = roomLight + 1500;
+
+    Serial.print("Fixed Room Light Level: ");
+    Serial.println(roomLight);
+    Serial.print("Adaptive Threshold Set At: ");
+    Serial.println(threshold);
+
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.setCursor(10, 10);
+    M5.Lcd.println("Enter a message:");
+}
+
+void sendBit(bool bit) {
+    digitalWrite(LED_PIN, bit ? HIGH : LOW);
+    delay(100); // 100ms per bit
+}
+
+void sendByte(byte b) {
+    for (int i = 7; i >= 0; i--) {
+        sendBit(bitRead(b, i));
+    }
+}
+
+void sendData(String text) {
+    sendByte(START_SIGNAL); // Send start signal
+    for (int i = 0; i < text.length(); i++) {
+        sendByte(text[i]); // Send characters
+    }
+    sendByte(STOP_SIGNAL); // Send stop signal
+}
+
+bool checkPattern(String pattern) {
+    return receivedData.endsWith(pattern);
+}
+
+void loop() {
+    // **Transmission Part**
+    if (Serial.available()) {
+        String message = Serial.readStringUntil('\n');
+        message.trim();
+
+        if (message.length() > 0) {
+            Serial.print("Sending: ");
+            Serial.println(message);
+
+            M5.Lcd.fillScreen(BLACK);
+            M5.Lcd.setCursor(10, 10);
+            M5.Lcd.println("Sending:");
+            M5.Lcd.println(message);
+
+            sendData(message);
+            Serial.println("Message Sent!");
+        }
+    }
+
+    // **Reception Part**
+    int lightValue = analogRead(SOLAR_PIN);
+    bool bitValue = (lightValue > threshold);
+    receivedData += (bitValue ? "1" : "0");
+
+    if (!listening && checkPattern("11110000")) {
+        Serial.println("Start Signal Detected! Listening...");
+        receivedData = "";
+        listening = true;
+    }
+
+    if (listening) {
+        if (checkPattern("00001111")) {
+            Serial.println("Stop Signal Detected! Data Received:");
+            receivedData = receivedData.substring(0, receivedData.length() - 8);
+
+            while (receivedData.length() % 8 != 0) {
+                receivedData.remove(receivedData.length() - 1);
+            }
+
+            Serial.println(receivedData);
+            Serial.print("Decoded Text: ");
+            Serial.println(binaryToText(receivedData));
+
+            M5.Lcd.fillScreen(BLACK);
+            M5.Lcd.setCursor(10, 10);
+            M5.Lcd.println("Received:");
+            M5.Lcd.println(binaryToText(receivedData));
+
+            listening = false;
+            receivedData = "";
+        }
+    }
+
+    delay(SAMPLE_TIME);
+}
+
+String binaryToText(String binary) {
+    String text = "";
+    for (int i = 0; i < binary.length(); i += 8) {
+        String byteString = binary.substring(i, i + 8);
+        char c = strtol(byteString.c_str(), NULL, 2);
+        text += c;
+    }
+    return text;
+}
