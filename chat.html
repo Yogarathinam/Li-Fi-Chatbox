@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Li-Fi Messenger</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #1e1e1e;
+            color: white;
+        }
+        h2 { margin-bottom: 10px; }
+        #connectButton, #sendButton {
+            padding: 10px 15px;
+            border: none;
+            background: #4CAF50;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #sendButton:disabled { background: gray; cursor: not-allowed; }
+        #chatbox {
+            width: 90%;
+            max-width: 600px;
+            height: 70vh;
+            background: #333;
+            border-radius: 10px;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            padding: 8px 12px;
+            margin: 5px;
+            border-radius: 5px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .sent { align-self: flex-end; background: #4CAF50; color: white; }
+        .received { align-self: flex-start; background: #2196F3; color: white; }
+        #inputArea {
+            display: flex;
+            width: 90%;
+            max-width: 600px;
+            margin-top: 10px;
+        }
+        #messageInput {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #status { margin-top: 5px; font-size: 14px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <h2>Li-Fi Messenger</h2>
+    <button id="connectButton">Select Microcontroller Port</button>
+
+    <div id="chatbox"></div>
+
+    <div id="inputArea">
+        <input type="text" id="messageInput" placeholder="Type a message..." />
+        <button id="sendButton" disabled>Send</button>
+    </div>
+
+    <p id="status">Not connected</p>
+
+    <script>
+        let port;
+        let writer;
+        let reader;
+        let connected = false;
+
+        document.getElementById("connectButton").addEventListener("click", async () => {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                writer = port.writable.getWriter();
+                reader = port.readable.getReader();
+                connected = true;
+                document.getElementById("status").innerText = "Connected!";
+                document.getElementById("sendButton").disabled = false;
+                readSerial();
+            } catch (err) {
+                console.error("Connection failed:", err);
+                document.getElementById("status").innerText = "Failed to connect!";
+            }
+        });
+
+        async function sendSerialMessage(message) {
+            if (!connected) {
+                alert("Please connect to the device first!");
+                return;
+            }
+
+            let chatbox = document.getElementById("chatbox");
+            let messageDiv = document.createElement("div");
+            messageDiv.classList.add("message", "sent");
+            messageDiv.innerText = message;
+            chatbox.appendChild(messageDiv);
+            chatbox.scrollTop = chatbox.scrollHeight;
+
+            let encoded = new TextEncoder().encode(message + "\n");
+            await writer.write(encoded);
+        }
+
+        async function readSerial() {
+            let buffer = "";
+            while (port.readable) {
+                try {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    let message = new TextDecoder().decode(value);
+                    buffer += message;
+
+                    // Process the message line by line
+                    let lines = buffer.split("\n");
+                    buffer = lines.pop(); // Keep the last incomplete line for the next read
+
+                    for (let line of lines) {
+                        line = line.trim(); // Remove unnecessary spaces
+
+                        // Extract only messages starting with "Decoded Text:"
+                        if (line.startsWith("Decoded Text:")) {
+                            let receivedMessage = line.replace("Decoded Text:", "").trim();
+                            appendMessage(receivedMessage, "received");
+                        }
+                    }
+                } catch (err) {
+                    console.error("Read error:", err);
+                    break;
+                }
+            }
+        }
+
+        function appendMessage(message, type) {
+            let chatbox = document.getElementById("chatbox");
+            let messageDiv = document.createElement("div");
+            messageDiv.classList.add("message", type);
+            messageDiv.innerText = message;
+            chatbox.appendChild(messageDiv);
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+
+        document.getElementById("sendButton").addEventListener("click", () => {
+            let message = document.getElementById("messageInput").value;
+            if (message.trim()) {
+                sendSerialMessage(message);
+                document.getElementById("messageInput").value = "";
+            }
+        });
+
+        document.getElementById("messageInput").addEventListener("keypress", (event) => {
+            if (event.key === "Enter") {
+                document.getElementById("sendButton").click();
+            }
+        });
+    </script>
+
+</body>
+</html>
